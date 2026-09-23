@@ -1,0 +1,12 @@
+{
+  "name": "qweqweqwe",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
