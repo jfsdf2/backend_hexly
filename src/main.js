@@ -81,9 +81,17 @@ const db = {
   orders: []
 };
 
+const email_regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const phone_regex = /^\+?[\d\s()\-]{7,20}$/
+
 const userController = {
   create: (req, res) => {
     const { name, full_name, number, email } = req.body;
+    
+    if (!name || !full_name || !number || !email) return res.status(400).json({ error: 'Заполните все пункты'});
+    if (!email_regex.test(email)) return res.status(400).json({ error: 'Некорректный email'});
+    if (!phone_regex.test(number)) return res.status(400).json({ error: 'Некорректный телефон'});
+
     const user = new User(Date.now(), name, full_name, number, email);
     db.users.push(user);
     res.status(201).json(user);
