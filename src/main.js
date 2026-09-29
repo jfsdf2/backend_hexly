@@ -1,4 +1,7 @@
-import express from 'express'
+import express from 'express';
+import Joi from 'joi';
+import bcrypt from 'bcrypt';
+import { User } from './db.js';
 
 const app = express()
 
@@ -33,7 +36,6 @@ const rateLimiter = ((req, res, next) => {
   if (timestamps.length >= maxRequests) {
     reqHistory.set(ip, timestamps);
     return res.status(429).json({ 
-      error: 'Слишком много запросов',
       message: 'Слишком много запросов' 
     });
   }
@@ -55,16 +57,6 @@ class Products{
   }
 }
 
-class User{
-  constructor(id, name, full_name, number, email){
-    this.id = id
-    this.name = name
-    this.full_name = full_name
-    this.number = number
-    this.email = email
-  }
-}
-
 class Order{
   constructor(id, userId, productId, status, totalAmount){
     this.id = id
@@ -75,65 +67,142 @@ class Order{
   }
 }
 
-const db = {
-  users: [],
-  products: [],
-  orders: []
-};
-
 const email_regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const phone_regex = /^\+?[\d\s()\-]{7,20}$/
 
-const userController = {
-  create: (req, res) => {
-    const { name, full_name, number, email } = req.body;
-    
-    if (!name || !full_name || !number || !email) return res.status(400).json({ error: 'Заполните все пункты'});
-    if (!email_regex.test(email)) return res.status(400).json({ error: 'Некорректный email'});
-    if (!phone_regex.test(number)) return res.status(400).json({ error: 'Некорректный телефон'});
+const userSchema = Joi.object({
+  name: Joi.string().min(2).required(),
+  full_name: Joi.string().min(2),
+  number: Joi.string().pattern(phone_regex),
+  email: Joi.string().email().required().pattern(email_regex),
+  password: Joi.string().min(6).required()
+});
 
-    const user = new User(Date.now(), name, full_name, number, email);
-    db.users.push(user);
-    res.status(201).json(user);
+const validateUser = (req, res, next) => {
+  const { error } = userSchema.validate(req.body);
+  if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+  }
+  next();
+};
+
+const userController = {
+  create: async (req, res) => {
+    try {
+      const { name, full_name, number, email, password } = req.body;
+      const existingUser = await User.findOne({ where: { email } });
+      if (existingUser) {
+        return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
+      }
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+      const user = await User.create({
+        name,
+        full_name,
+        number,
+        email,
+        password: hashedPassword
+      });
+      const userResponse = user.toJSON();
+      delete userResponse.password;
+      res.status(201).json(userResponse);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Ошибка сервера при создании пользователя' });
+    }
   },
-  readAll: (req, res) => {
-    res.json(db.users);
+  readAll: async (req, res) => {
+    try {
+      const users = await User.findAll({ 
+        attributes: { exclude: ['password'] } 
+      });
+      res.json(users);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Ошибка сервера при получении списка пользователей' });
+    }
   },
-  readOne: (req, res) => {
-    const user = db.users.find(u => u.id === Number(req.params.id));
-    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-    res.json(user);
+  readOne: async (req, res) => {
+    try {
+      const user = await User.findByPk(req.params.id, { 
+        attributes: { exclude: ['password'] } 
+      });
+      if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+      res.json(user);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Ошибка сервера при получении пользователя' });
+    }
   },
-  update: (req, res) => {
-    const user = db.users.find(u => u.id === Number(req.params.id));
-    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-    
-    const { name, full_name, number, email } = req.body;
-    if (name) user.name = name;
-    if (full_name) user.full_name = full_name;
-    if (number) user.number = number;
-    if (email) user.email = email;
-    
-    res.json(user);
+  update: async (req, res) => {
+    try {
+      const user = await User.findByPk(req.params.id);
+      if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
+      const { name, full_name, number, email, password } = req.body;
+      
+      const updates = {};
+      if (name) updates.name = name;
+      if (full_name) updates.full_name = full_name;
+      if (number) updates.number = number;
+      if (email) updates.email = email;
+      if (password) {
+        updates.password = await bcrypt.hash(password, 10);
+      }
+      await user.update(updates);
+
+      const userResponse = user.toJSON();
+      delete userResponse.password;
+      res.json(userResponse);
+      } 
+      catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Ошибка сервера при обновлении пользователя' });
+    }
   },
-  delete: (req, res) => {
-    const index = db.users.findIndex(u => u.id === Number(req.params.id));
-    if (index === -1) return res.status(404).json({ error: 'Пользователь не найден' });
-    db.users.splice(index, 1);
-    res.status(204).send();
+  delete: async (req, res) => {
+    try {
+      const deletedRows = await User.destroy({ 
+        where: { id: req.params.id } 
+      });
+      
+      if (deletedRows === 0) return res.status(404).json({ error: 'Пользователь не найден' });
+      res.status(204).send();
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Ошибка сервера при удалении пользователя' });
+    }
+  },
+  login: async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      const user = await User.findOne({ where: { email } });
+      if (!user) {
+        return res.status(401).json({ error: 'Неверный email или password' });
+      }
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        return res.status(401).json({ error: 'Неверный email или password' });
+      }
+      res.json({ message: 'Авторизация успешна!', userId: user.id });
+    } 
+      catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Ошибка сервера при авторизации' });
+    }
   }
 };
 
 
-
 const usersRouter = express.Router();
+usersRouter.post('/', validateUser, userController.create);
 usersRouter.post('/', userController.create);
 usersRouter.get('/', userController.readAll);
+usersRouter.post('/login', userController.login);
 usersRouter.get('/:id', userController.readOne);
 usersRouter.put('/:id', userController.update);
 usersRouter.delete('/:id', userController.delete);
 app.use('/api/users', usersRouter);
-
 
 app.post('/echo', (req, res) => {
   res.json(req.body);
