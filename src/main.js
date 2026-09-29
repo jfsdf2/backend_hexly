@@ -196,7 +196,6 @@ const userController = {
 
 const usersRouter = express.Router();
 usersRouter.post('/', validateUser, userController.create);
-usersRouter.post('/', userController.create);
 usersRouter.get('/', userController.readAll);
 usersRouter.post('/login', userController.login);
 usersRouter.get('/:id', userController.readOne);
