@@ -2,10 +2,21 @@ import express from 'express';
 import Joi from 'joi';
 import bcrypt from 'bcrypt';
 import { User } from './db.js';
+import cors from 'cors';
 
 const app = express()
 
 app.use(express.json())
+
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000'
+];
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
 
 app.use((req, res, next) => {
   const method = req.method
