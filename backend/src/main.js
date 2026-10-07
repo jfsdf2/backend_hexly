@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
+import 'dotenv/config';
 
+import { authMiddleware } from './middlewares/authMiddleware.js';
 import { userController } from './controllers/userController.js';
 import { validateUser } from './utils/validators.js';
 
@@ -64,8 +66,8 @@ usersRouter.post('/', validateUser, userController.create);
 usersRouter.get('/', userController.readAll);
 usersRouter.post('/login', userController.login);
 usersRouter.get('/:id', userController.readOne);
-usersRouter.put('/:id', userController.update);
-usersRouter.delete('/:id', userController.delete);
+usersRouter.put('/:id', authMiddleware, userController.update);
+usersRouter.delete('/:id', authMiddleware, userController.delete);
 app.use('/api/users', usersRouter);
 
 app.post('/echo', (req, res) => {
