@@ -1,5 +1,5 @@
 import bcrypt from 'bcrypt';
-import { User } from '../db.js';
+import { User } from '../db/db.js';
 import jwt from 'jsonwebtoken';
 
 export const userController = {
