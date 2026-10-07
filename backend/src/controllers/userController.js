@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import { User } from '../db.js';
+import jwt from 'jsonwebtoken';
 
 export const userController = {
     create: async (req, res) => {
@@ -99,7 +100,8 @@ export const userController = {
             if (!isMatch) {
                 return res.status(401).json({ error: 'Неверный email или password' });
             }
-            res.json({ message: 'Авторизация успешна!', userId: user.id });
+            const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '1h' });
+            res.json({ message: 'Авторизация успешна!', userId: user.id, token });
         } 
             catch (error) {
             console.error(error);
